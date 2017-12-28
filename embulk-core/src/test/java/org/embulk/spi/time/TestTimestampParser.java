@@ -14,6 +14,22 @@ import org.junit.Test;
  * @see <a href="https://svn.ruby-lang.org/cgi-bin/viewvc.cgi/tags/v2_3_1/COPYING?view=markup">COPYING</a>
  */
 public class TestTimestampParser {
+    @Test
+    public void testJavaIso8601() {
+        // "Java" timestamp parser does not accept second = 60 for the time being.
+        testJavaToParse("2001-02-03", "yyyy-MM-dd", 981158400L);
+        testJavaToParse("2001-02-03", "uuuu-MM-dd", 981158400L);
+        testJavaToParse("2001-02-03T23:59:59", "yyyy-MM-dd'T'HH:mm:ss", 981244799L);
+        testJavaToParse("2001-02-03T23:59:59", "uuuu-MM-dd'T'HH:mm:ss", 981244799L);
+        testJavaToParse("2001-02-03T23:59:59+09:00", "yyyy-MM-dd'T'HH:mm:ssXXXXX", 981212399L);
+        testJavaToParse("2001-02-03T23:59:59+09:00", "uuuu-MM-dd'T'HH:mm:ssXXXXX", 981212399L);
+        // "yyyy" is Year of Era, which does not accept negative years for AD.
+        testJavaToParse("-2001-02-03T23:59:59+09:00", "uuuu-MM-dd'T'HH:mm:ssXXXXX", -125309754001L);
+        testJavaToParse("+012345-02-03T23:59:59+09:00", "yyyy-MM-dd'T'HH:mm:ssXXXXX", 327406287599L);
+        testJavaToParse("+012345-02-03T23:59:59+09:00", "uuuu-MM-dd'T'HH:mm:ssXXXXX", 327406287599L);
+        testJavaToParse("-012345-02-03T23:59:59+09:00", "uuuu-MM-dd'T'HH:mm:ssXXXXX", -451734829201L);
+    }
+
     @Test  // Imported from test__strptime__3 in Ruby v2.3.1's test/date/test_date_strptime.rb.
     public void test__strptime__3_iso8601() {
         testToParse("2001-02-03", "%Y-%m-%d", 981158400L);
@@ -28,6 +44,30 @@ public class TestTimestampParser {
     public void test__strptime__3_ctime3_asctime3() {
         testToParse("Thu Jul 29 14:47:19 1999", "%c", 933259639L);
         testToParse("Thu Jul 29 14:47:19 -1999", "%c", -125231389961L);
+    }
+
+    @Test
+    public void testJavaTimeZones() {
+        testJavaToParse("Thu Jul 29 16:39:41 -05:00 1999", "EEE MMM dd HH:mm:ss XXXXX uuuu", 933284381L);
+        failJavaToParse("Thu Jul 29 16:39:41 EST 1999", "EEE MMM dd HH:mm:ss zzz uuuu");
+        //testJavaToParse("Thu Jul 29 16:39:41 EST 1999", "EEE MMM dd HH:mm:ss zzz uuuu", 933266381L);
+        /*
+        testJavaToParse("Thu Jul 29 16:39:41 MET DST 1999", "%a %b %d %H:%M:%S %Z %Y", 933259181L);
+        testJavaToParse("Thu Jul 29 16:39:41 AST 1999", "%a %b %d %H:%M:%S %Z %Y", 933280781L);
+        testJavaToParse("Thu Jul 29 16:39:41 AST -1999", "%a %b %d %H:%M:%S %Z %Y", -125231368819L);
+        */
+        /*
+        testToParse("Thu Jul 29 16:39:41 GMT+09 1999", "%a %b %d %H:%M:%S %Z %Y", 933233981L);
+        testToParse("Thu Jul 29 16:39:41 GMT+0908 1999", "%a %b %d %H:%M:%S %Z %Y", 933233501L);
+        testToParse("Thu Jul 29 16:39:41 GMT+090807 1999", "%a %b %d %H:%M:%S %Z %Y", 933233494L);
+        testToParse("Thu Jul 29 16:39:41 GMT-09 1999", "%a %b %d %H:%M:%S %Z %Y", 933298781L);
+        testToParse("Thu Jul 29 16:39:41 GMT-09:08 1999", "%a %b %d %H:%M:%S %Z %Y", 933299261L);
+        testToParse("Thu Jul 29 16:39:41 GMT-09:08:07 1999", "%a %b %d %H:%M:%S %Z %Y", 933299268L);
+        testToParse("Thu Jul 29 16:39:41 GMT-3.5 1999", "%a %b %d %H:%M:%S %Z %Y", 933278981L);
+        testToParse("Thu Jul 29 16:39:41 GMT-3,5 1999", "%a %b %d %H:%M:%S %Z %Y", 933278981L);
+        testToParse("Thu Jul 29 16:39:41 Mountain Daylight Time 1999", "%a %b %d %H:%M:%S %Z %Y", 933287981L);
+        testToParse("Thu Jul 29 16:39:41 E. Australia Standard Time 1999", "%a %b %d %H:%M:%S %Z %Y", 933230381L);
+        */
     }
 
     @Test  // Imported from test__strptime__3 in Ruby v2.3.1's test/date/test_date_strptime.rb.
@@ -223,6 +263,27 @@ public class TestTimestampParser {
         // -0.9s is represented like -1s + 100ms.
         testToParse("-999", "%Q", -1L, 1000000);
         testToParse("-1000", "%Q", -1L);
+    }
+
+    private void testJavaToParse(final String string, final String format, final long second, final int nanoOfSecond) {
+        final TimestampParser parser = TimestampParser.of("java:" + format, "UTC");
+        final Timestamp timestamp = parser.parse(string);
+        assertEquals(second, timestamp.getEpochSecond());
+        assertEquals(nanoOfSecond,timestamp.getNano());
+    }
+
+    private void testJavaToParse(final String string, final String format, final long second) {
+        testJavaToParse(string, format, second, 0);
+    }
+
+    private void failJavaToParse(final String string, final String format) {
+        final TimestampParser parser = TimestampParser.of("java:" + format, "UTC");
+        try {
+            parser.parse(string);
+        } catch (TimestampParseException ex) {
+            return;
+        }
+        fail();
     }
 
     private void testToParse(final String string, final String format, final long second, final int nanoOfSecond) {
